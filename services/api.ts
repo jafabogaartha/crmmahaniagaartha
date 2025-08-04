@@ -1,199 +1,558 @@
-
+import { supabase, handleSupabaseError } from '../lib/supabase';
 import { Role, User, Product, Package, Lead, LeadStage, FinalStatus, FollowUpStatus, HandleCustomerData, Target, PaymentMethod, Note } from '../types';
 
-// --- MOCK DATABASE ---
+// Helper function to transform database rows to application types
+const transformLead = (leadRow: any, notes: Note[] = []): Lead => ({
+  id: leadRow.id,
+  waktu: leadRow.waktu,
+  nama: leadRow.nama,
+  nomor_wa: leadRow.nomor_wa,
+  sumber_lead: leadRow.sumber_lead,
+  product_id: leadRow.product_id || '',
+  paket_id: leadRow.paket_id || '',
+  harga: leadRow.harga || 0,
+  assigned_to: leadRow.assigned_to || '',
+  stage: leadRow.stage as LeadStage,
+  tanggal_closing: leadRow.tanggal_closing || '',
+  metode_bayar: leadRow.metode_bayar as PaymentMethod,
+  nominal_dp: leadRow.nominal_dp || 0,
+  status: leadRow.status as FinalStatus,
+  next_follow_up: leadRow.next_follow_up || '',
+  inquiry_text: leadRow.inquiry_text || '',
+  notes: notes
+});
 
-let users: User[] = [
-  { id: 'u1', username: 'angger', nama_lengkap: 'Angger', role: Role.SUPER_ADMIN, nomor_wa: '6281234567890', aktif: true, avatar: 'https://i.pravatar.cc/150?u=angger' },
-  { id: 'u2', username: 'berliana', nama_lengkap: 'Berliana', role: Role.ADMIN, nomor_wa: '6285155145788', aktif: true, avatar: 'https://i.pravatar.cc/150?u=berliana' },
-  { id: 'u3', username: 'livia', nama_lengkap: 'Livia', role: Role.ADMIN, nomor_wa: '6285117505788', aktif: true, avatar: 'https://i.pravatar.cc/150?u=livia' },
-  { id: 'u4', username: 'reka', nama_lengkap: 'Reka', role: Role.ADMIN, nomor_wa: '6282324159922', aktif: false, avatar: 'https://i.pravatar.cc/150?u=reka' },
-  { id: 'u5', username: 'selly', nama_lengkap: 'Selly', role: Role.HANDLE_CUSTOMER, nomor_wa: '6289876543210', aktif: true, avatar: 'https://i.pravatar.cc/150?u=selly' },
-];
+const transformUser = (userRow: any): User => ({
+  id: userRow.id,
+  username: userRow.username,
+  nama_lengkap: userRow.nama_lengkap,
+  role: userRow.role as Role,
+  nomor_wa: userRow.nomor_wa,
+  aktif: userRow.aktif,
+  avatar: userRow.avatar
+});
 
-let products: Product[] = [
-  { id: 'p1', nama_produk: 'youneedmie' },
-  { id: 'p2', nama_produk: 'kopiibukota' },
-];
-
-let packages: Package[] = [
-  { id: 'pkg1', product_id: 'p1', nama_paket: 'Paket Super Hemat', harga_default: 50000 },
-  { id: 'pkg2', product_id: 'p1', nama_paket: 'Paket Hemat', harga_default: 75000 },
-  { id: 'pkg3', product_id: 'p1', nama_paket: 'Paket Portable', harga_default: 125000 },
-  { id: 'pkg4', product_id: 'p1', nama_paket: 'Paket Koper', harga_default: 250000 },
-  { id: 'pkg5', product_id: 'p2', nama_paket: 'Kopi Susu Literan', harga_default: 80000 },
-  { id: 'pkg6', product_id: 'p2', nama_paket: 'Paket Meeting', harga_default: 200000 },
-];
-
-let leads: Lead[] = [
-  { id: 'l1', waktu: '2024-07-28T10:00:00Z', nama: 'Budi Santoso', nomor_wa: '62811111111', sumber_lead: 'Instagram', product_id: 'p1', paket_id: 'pkg1', harga: 50000, assigned_to: 'u2', stage: LeadStage.CLOSING, tanggal_closing: '2024-07-29', metode_bayar: PaymentMethod.FULL_TRANSFER, status: FinalStatus.SELESAI, notes: [], next_follow_up: '', inquiry_text: 'Saya mau tanya-tanya dulu soal paket ini.' },
-  { id: 'l2', waktu: '2024-07-28T11:00:00Z', nama: 'Citra Lestari', nomor_wa: '62822222222', sumber_lead: 'TikTok', product_id: 'p1', paket_id: 'pkg3', harga: 125000, assigned_to: 'u3', stage: LeadStage.ON_PROGRESS, status: FinalStatus.BELUM_SELESAI, notes: [{id: 'n1', text: 'Minta dihubungi lagi besok jam 2 siang.', authorId: 'u3', authorName: 'Livia', timestamp: '2024-07-28T11:05:00Z'}], next_follow_up: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate() + 1).padStart(2, '0')}T14:00`, inquiry_text: 'Apakah bisa custom isinya?' },
-  { id: 'l3', waktu: '2024-07-28T12:30:00Z', nama: 'Doni Firmansyah', nomor_wa: '62833333333', sumber_lead: 'Facebook', product_id: 'p2', paket_id: 'pkg5', harga: 80000, assigned_to: 'u2', stage: LeadStage.LOSS, status: FinalStatus.BELUM_SELESAI, notes: [], next_follow_up: '', inquiry_text: 'Ada promo apa untuk kopi literan?' },
-  { id: 'l4', waktu: '2024-07-29T09:00:00Z', nama: 'Eka Putri', nomor_wa: '62844444444', sumber_lead: 'Website', product_id: 'p2', paket_id: 'pkg6', harga: 200000, assigned_to: 'u3', stage: LeadStage.CLOSING, tanggal_closing: '2024-07-30', metode_bayar: PaymentMethod.DP, nominal_dp: 50000, status: FinalStatus.BELUM_SELESAI, notes: [], next_follow_up: '', inquiry_text: 'Bisa kirim hari ini?' },
-  { id: 'l5', waktu: '2024-07-29T14:00:00Z', nama: 'Fajar Nugraha', nomor_wa: '62855555555', sumber_lead: 'Instagram', product_id: 'p1', paket_id: 'pkg4', harga: 250000, assigned_to: 'u2', stage: LeadStage.ON_PROGRESS, status: FinalStatus.BELUM_SELESAI, notes: [], next_follow_up: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}T09:00`, inquiry_text: 'Lokasi di mana ya?' },
-  { id: 'l6', waktu: '2024-07-30T10:00:00Z', nama: 'Gita Amelia', nomor_wa: '62866666666', sumber_lead: 'TikTok', product_id: 'p1', paket_id: 'pkg2', harga: 75000, assigned_to: 'u3', stage: LeadStage.CLOSING, tanggal_closing: '2024-07-30', metode_bayar: PaymentMethod.COD, status: FinalStatus.SELESAI, notes: [], next_follow_up: '', inquiry_text: 'Saya tertarik dengan paket hemat.' },
-];
-
-let handleCustomerData: HandleCustomerData[] = leads
-  .filter(l => l.stage === LeadStage.CLOSING && l.status === FinalStatus.SELESAI)
-  .map(l => ({
-    ...l,
-    lead_id: l.id,
-    status_fu: FollowUpStatus.BELUM,
-  }));
-
-let targets: Target[] = [
-    { user_id: 'u2', target_harian: 2, target_bulanan: 20 },
-    { user_id: 'u3', target_harian: 2, target_bulanan: 25 },
-    { user_id: 'u4', target_harian: 1, target_bulanan: 15 },
-];
-
-
-// --- MOCK API FUNCTIONS ---
-
-const mockApiCall = <T,>(data: T, delay = 500): Promise<T> =>
-  new Promise(resolve => setTimeout(() => resolve(JSON.parse(JSON.stringify(data))), delay));
+const transformHandleCustomerData = (hcRow: any, leadData: any): HandleCustomerData => ({
+  ...transformLead(leadData),
+  lead_id: hcRow.lead_id,
+  status_fu: hcRow.status_fu as FollowUpStatus,
+  tanggal_fu_terakhir: hcRow.tanggal_fu_terakhir || ''
+});
 
 export const api = {
+  // Authentication
   login: async (username: string): Promise<User | null> => {
-    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
-    return mockApiCall(user || null, 300);
-  },
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', username.toLowerCase())
+        .single();
 
-  getUsers: async (): Promise<User[]> => mockApiCall(users),
-  
-  updateUserStatus: async (userId: string, aktif: boolean): Promise<User> => {
-      let updatedUser: User | undefined;
-      users = users.map(u => {
-          if (u.id === userId) {
-              updatedUser = { ...u, aktif };
-              return updatedUser;
-          }
-          return u;
-      });
-      if (!updatedUser) throw new Error("User not found");
-      return mockApiCall(updatedUser);
-  },
-  
-  getAdmins: async (): Promise<User[]> => mockApiCall(users.filter(u => u.role === Role.ADMIN)),
-
-  getProducts: async (): Promise<Product[]> => mockApiCall(products),
-
-  getPackages: async (): Promise<Package[]> => mockApiCall(packages),
-  
-  getPackagesByProductId: async (productId: string): Promise<Package[]> => mockApiCall(packages.filter(p => p.product_id === productId)),
-
-  getLeads: async (): Promise<Lead[]> => mockApiCall(leads),
-  
-  getLeadsByAdminId: async (adminId: string): Promise<Lead[]> => mockApiCall(leads.filter(l => l.assigned_to === adminId)),
-
-  getHandleCustomerData: async (): Promise<HandleCustomerData[]> => mockApiCall(handleCustomerData),
-
-  updateLead: async (updatedLeadData: Lead): Promise<Lead> => {
-    const leadIndex = leads.findIndex(l => l.id === updatedLeadData.id);
-    if (leadIndex === -1) throw new Error("Lead not found");
-    
-    // Preserve existing notes and add new ones if any
-    const existingLead = leads[leadIndex];
-    const newNotes = updatedLeadData.notes.filter(n => !existingLead.notes.some(en => en.id === n.id));
-
-    const updatedLead = {
-        ...existingLead,
-        ...updatedLeadData,
-        notes: [...existingLead.notes, ...newNotes]
-    };
-    
-    leads[leadIndex] = updatedLead;
-
-    // Sync with handleCustomerData
-    if (updatedLead.stage === LeadStage.CLOSING && updatedLead.status === FinalStatus.SELESAI) {
-      if (!handleCustomerData.some(hc => hc.lead_id === updatedLead.id)) {
-        handleCustomerData.push({ ...updatedLead, lead_id: updatedLead.id, status_fu: FollowUpStatus.BELUM });
+      if (error) {
+        if (error.code === 'PGRST116') return null; // No rows returned
+        handleSupabaseError(error, 'login');
       }
-    }
-    return mockApiCall(updatedLead);
-  },
-  
-  updateHandleCustomer: async (updatedHc: HandleCustomerData): Promise<HandleCustomerData> => {
-    handleCustomerData = handleCustomerData.map(hc => hc.id === updatedHc.id ? updatedHc : hc);
-    return mockApiCall(updatedHc);
-  },
-  
-  getTargets: async (): Promise<Target[]> => mockApiCall(targets),
 
-  updateTarget: async (updatedTarget: Target): Promise<Target> => {
-    targets = targets.map(t => t.user_id === updatedTarget.user_id ? updatedTarget : t);
-    return mockApiCall(updatedTarget);
+      return data ? transformUser(data) : null;
+    } catch (error) {
+      handleSupabaseError(error, 'login');
+      return null;
+    }
+  },
+
+  // Users
+  getUsers: async (): Promise<User[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('nama_lengkap');
+
+      if (error) handleSupabaseError(error, 'getUsers');
+      return data?.map(transformUser) || [];
+    } catch (error) {
+      handleSupabaseError(error, 'getUsers');
+      return [];
+    }
+  },
+
+  updateUserStatus: async (userId: string, aktif: boolean): Promise<User> => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .update({ aktif, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) handleSupabaseError(error, 'updateUserStatus');
+      return transformUser(data);
+    } catch (error) {
+      handleSupabaseError(error, 'updateUserStatus');
+      throw error;
+    }
+  },
+
+  getAdmins: async (): Promise<User[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', Role.ADMIN)
+        .order('nama_lengkap');
+
+      if (error) handleSupabaseError(error, 'getAdmins');
+      return data?.map(transformUser) || [];
+    } catch (error) {
+      handleSupabaseError(error, 'getAdmins');
+      return [];
+    }
+  },
+
+  // Products
+  getProducts: async (): Promise<Product[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('nama_produk');
+
+      if (error) handleSupabaseError(error, 'getProducts');
+      return data || [];
+    } catch (error) {
+      handleSupabaseError(error, 'getProducts');
+      return [];
+    }
   },
 
   updateProduct: async (updatedProduct: Product): Promise<Product> => {
-    products = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
-    return mockApiCall(updatedProduct);
-  },
-  
-  updatePackage: async (updatedPackage: Package): Promise<Package> => {
-    packages = packages.map(p => p.id === updatedPackage.id ? updatedPackage : p);
-    return mockApiCall(updatedPackage);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .update({ 
+          nama_produk: updatedProduct.nama_produk,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', updatedProduct.id)
+        .select()
+        .single();
+
+      if (error) handleSupabaseError(error, 'updateProduct');
+      return data;
+    } catch (error) {
+      handleSupabaseError(error, 'updateProduct');
+      throw error;
+    }
   },
 
   addProduct: async (newProductData: { nama_produk: string }): Promise<Product> => {
-    const newProduct: Product = {
-        id: `p${Date.now()}`,
-        nama_produk: newProductData.nama_produk,
-    };
-    products.push(newProduct);
-    return mockApiCall(newProduct);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .insert([{ nama_produk: newProductData.nama_produk }])
+        .select()
+        .single();
+
+      if (error) handleSupabaseError(error, 'addProduct');
+      return data;
+    } catch (error) {
+      handleSupabaseError(error, 'addProduct');
+      throw error;
+    }
+  },
+
+  // Packages
+  getPackages: async (): Promise<Package[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('packages')
+        .select('*')
+        .order('nama_paket');
+
+      if (error) handleSupabaseError(error, 'getPackages');
+      return data || [];
+    } catch (error) {
+      handleSupabaseError(error, 'getPackages');
+      return [];
+    }
+  },
+
+  getPackagesByProductId: async (productId: string): Promise<Package[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('packages')
+        .select('*')
+        .eq('product_id', productId)
+        .order('nama_paket');
+
+      if (error) handleSupabaseError(error, 'getPackagesByProductId');
+      return data || [];
+    } catch (error) {
+      handleSupabaseError(error, 'getPackagesByProductId');
+      return [];
+    }
+  },
+
+  updatePackage: async (updatedPackage: Package): Promise<Package> => {
+    try {
+      const { data, error } = await supabase
+        .from('packages')
+        .update({ 
+          nama_paket: updatedPackage.nama_paket,
+          harga_default: updatedPackage.harga_default,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', updatedPackage.id)
+        .select()
+        .single();
+
+      if (error) handleSupabaseError(error, 'updatePackage');
+      return data;
+    } catch (error) {
+      handleSupabaseError(error, 'updatePackage');
+      throw error;
+    }
   },
 
   addPackage: async (newPackageData: { product_id: string; nama_paket: string; harga_default: number }): Promise<Package> => {
-      const newPackage: Package = {
-          id: `pkg${Date.now()}`,
-          ...newPackageData
-      };
-      packages.push(newPackage);
-      return mockApiCall(newPackage);
+    try {
+      const { data, error } = await supabase
+        .from('packages')
+        .insert([newPackageData])
+        .select()
+        .single();
+
+      if (error) handleSupabaseError(error, 'addPackage');
+      return data;
+    } catch (error) {
+      handleSupabaseError(error, 'addPackage');
+      throw error;
+    }
+  },
+
+  // Leads
+  getLeads: async (): Promise<Lead[]> => {
+    try {
+      const { data: leadsData, error: leadsError } = await supabase
+        .from('leads')
+        .select('*')
+        .order('waktu', { ascending: false });
+
+      if (leadsError) handleSupabaseError(leadsError, 'getLeads');
+
+      const { data: notesData, error: notesError } = await supabase
+        .from('notes')
+        .select('*')
+        .order('created_at');
+
+      if (notesError) handleSupabaseError(notesError, 'getLeads - notes');
+
+      // Group notes by lead_id
+      const notesByLeadId = (notesData || []).reduce((acc, note) => {
+        if (!acc[note.lead_id]) acc[note.lead_id] = [];
+        acc[note.lead_id].push({
+          id: note.id,
+          text: note.text,
+          authorId: note.author_id || 'system',
+          authorName: note.author_name,
+          timestamp: note.created_at
+        });
+        return acc;
+      }, {} as Record<string, Note[]>);
+
+      return (leadsData || []).map(lead => 
+        transformLead(lead, notesByLeadId[lead.id] || [])
+      );
+    } catch (error) {
+      handleSupabaseError(error, 'getLeads');
+      return [];
+    }
+  },
+
+  getLeadsByAdminId: async (adminId: string): Promise<Lead[]> => {
+    try {
+      const { data: leadsData, error: leadsError } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('assigned_to', adminId)
+        .order('waktu', { ascending: false });
+
+      if (leadsError) handleSupabaseError(leadsError, 'getLeadsByAdminId');
+
+      const leadIds = (leadsData || []).map(lead => lead.id);
+      
+      const { data: notesData, error: notesError } = await supabase
+        .from('notes')
+        .select('*')
+        .in('lead_id', leadIds)
+        .order('created_at');
+
+      if (notesError) handleSupabaseError(notesError, 'getLeadsByAdminId - notes');
+
+      // Group notes by lead_id
+      const notesByLeadId = (notesData || []).reduce((acc, note) => {
+        if (!acc[note.lead_id]) acc[note.lead_id] = [];
+        acc[note.lead_id].push({
+          id: note.id,
+          text: note.text,
+          authorId: note.author_id || 'system',
+          authorName: note.author_name,
+          timestamp: note.created_at
+        });
+        return acc;
+      }, {} as Record<string, Note[]>);
+
+      return (leadsData || []).map(lead => 
+        transformLead(lead, notesByLeadId[lead.id] || [])
+      );
+    } catch (error) {
+      handleSupabaseError(error, 'getLeadsByAdminId');
+      return [];
+    }
+  },
+
+  updateLead: async (updatedLeadData: Lead): Promise<Lead> => {
+    try {
+      // Update lead
+      const { data: leadData, error: leadError } = await supabase
+        .from('leads')
+        .update({
+          nama: updatedLeadData.nama,
+          nomor_wa: updatedLeadData.nomor_wa,
+          sumber_lead: updatedLeadData.sumber_lead,
+          product_id: updatedLeadData.product_id || null,
+          paket_id: updatedLeadData.paket_id || null,
+          harga: updatedLeadData.harga || 0,
+          stage: updatedLeadData.stage,
+          tanggal_closing: updatedLeadData.tanggal_closing || null,
+          metode_bayar: updatedLeadData.metode_bayar || null,
+          nominal_dp: updatedLeadData.nominal_dp || 0,
+          status: updatedLeadData.status,
+          next_follow_up: updatedLeadData.next_follow_up || null,
+          inquiry_text: updatedLeadData.inquiry_text || '',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', updatedLeadData.id)
+        .select()
+        .single();
+
+      if (leadError) handleSupabaseError(leadError, 'updateLead');
+
+      // Get existing notes
+      const { data: existingNotes, error: notesError } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('lead_id', updatedLeadData.id)
+        .order('created_at');
+
+      if (notesError) handleSupabaseError(notesError, 'updateLead - get notes');
+
+      // Find new notes to insert
+      const existingNoteIds = new Set((existingNotes || []).map(n => n.id));
+      const newNotes = updatedLeadData.notes.filter(note => !existingNoteIds.has(note.id));
+
+      // Insert new notes
+      if (newNotes.length > 0) {
+        const { error: insertNotesError } = await supabase
+          .from('notes')
+          .insert(newNotes.map(note => ({
+            id: note.id,
+            lead_id: updatedLeadData.id,
+            text: note.text,
+            author_id: note.authorId === 'system' ? null : note.authorId,
+            author_name: note.authorName
+          })));
+
+        if (insertNotesError) handleSupabaseError(insertNotesError, 'updateLead - insert notes');
+      }
+
+      // Get all notes for the response
+      const { data: allNotes, error: allNotesError } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('lead_id', updatedLeadData.id)
+        .order('created_at');
+
+      if (allNotesError) handleSupabaseError(allNotesError, 'updateLead - get all notes');
+
+      const notes: Note[] = (allNotes || []).map(note => ({
+        id: note.id,
+        text: note.text,
+        authorId: note.author_id || 'system',
+        authorName: note.author_name,
+        timestamp: note.created_at
+      }));
+
+      return transformLead(leadData, notes);
+    } catch (error) {
+      handleSupabaseError(error, 'updateLead');
+      throw error;
+    }
   },
 
   addLead: async (newLeadData: { nama: string; nomor_wa: string; sumber_lead: string; product_id: string; inquiry_text: string; }): Promise<{newLead: Lead, assignedAdmin: User}> => {
-    const activeAdmins = users.filter(u => u.role === Role.ADMIN && u.aktif);
-    if(activeAdmins.length === 0) {
-        throw new Error("No active admins available for lead assignment.");
-    }
+    try {
+      // Get active admins
+      const { data: activeAdmins, error: adminsError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', Role.ADMIN)
+        .eq('aktif', true)
+        .order('nama_lengkap');
 
-    // Duplicate detection
-    const existingLead = leads.find(l => l.nomor_wa.replace(/\D/g, '') === newLeadData.nomor_wa.replace(/\D/g, ''));
-    const systemNotes: Note[] = [];
-    if (existingLead) {
-        const duplicateNote: Note = {
-            id: `n_sys_${Date.now()}`,
-            text: `[SYSTEM] Potential duplicate of lead: ${existingLead.nama} (ID: ${existingLead.id})`,
-            authorId: 'system',
-            authorName: 'System',
-            timestamp: new Date().toISOString()
-        };
-        systemNotes.push(duplicateNote);
-    }
-
-    // Simple Round Robin
-    const lastAssignedLead = [...leads].reverse().find(lead => activeAdmins.some(a => a.id === lead.assigned_to));
-    const lastAssignedAdminId = lastAssignedLead?.assigned_to;
-    const lastAssignedAdminIndex = activeAdmins.findIndex(admin => admin.id === lastAssignedAdminId);
-
-    const nextAdminIndex = (lastAssignedAdminIndex + 1) % activeAdmins.length;
-    const assignedAdmin = activeAdmins[nextAdminIndex];
+      if (adminsError) handleSupabaseError(adminsError, 'addLead - get admins');
       
-    const newLead: Lead = {
-        id: `l${Date.now()}`,
-        waktu: new Date().toISOString(),
-        stage: LeadStage.ON_PROGRESS,
-        status: FinalStatus.BELUM_SELESAI,
-        assigned_to: assignedAdmin.id,
-        notes: systemNotes,
-        paket_id: '',
-        harga: 0,
-        ...newLeadData,
-    };
-    leads.push(newLead);
-    return mockApiCall({ newLead, assignedAdmin });
+      if (!activeAdmins || activeAdmins.length === 0) {
+        throw new Error("No active admins available for lead assignment.");
+      }
+
+      // Check for duplicate leads
+      const { data: existingLeads, error: duplicateError } = await supabase
+        .from('leads')
+        .select('id, nama, nomor_wa')
+        .ilike('nomor_wa', `%${newLeadData.nomor_wa.replace(/\D/g, '')}%`);
+
+      if (duplicateError) handleSupabaseError(duplicateError, 'addLead - check duplicates');
+
+      // Simple Round Robin assignment
+      const { data: lastLead, error: lastLeadError } = await supabase
+        .from('leads')
+        .select('assigned_to')
+        .not('assigned_to', 'is', null)
+        .order('waktu', { ascending: false })
+        .limit(1)
+        .single();
+
+      let assignedAdmin = activeAdmins[0]; // Default to first admin
+
+      if (!lastLeadError && lastLead) {
+        const lastAssignedAdminIndex = activeAdmins.findIndex(admin => admin.id === lastLead.assigned_to);
+        const nextAdminIndex = (lastAssignedAdminIndex + 1) % activeAdmins.length;
+        assignedAdmin = activeAdmins[nextAdminIndex];
+      }
+
+      // Insert new lead
+      const { data: leadData, error: leadError } = await supabase
+        .from('leads')
+        .insert([{
+          nama: newLeadData.nama,
+          nomor_wa: newLeadData.nomor_wa,
+          sumber_lead: newLeadData.sumber_lead,
+          product_id: newLeadData.product_id,
+          inquiry_text: newLeadData.inquiry_text,
+          assigned_to: assignedAdmin.id,
+          stage: LeadStage.ON_PROGRESS,
+          status: FinalStatus.BELUM_SELESAI,
+          harga: 0
+        }])
+        .select()
+        .single();
+
+      if (leadError) handleSupabaseError(leadError, 'addLead - insert lead');
+
+      // Add system note for duplicates
+      if (existingLeads && existingLeads.length > 0) {
+        const duplicateNote = `[SYSTEM] Potential duplicate of lead: ${existingLeads[0].nama} (ID: ${existingLeads[0].id})`;
+        
+        const { error: noteError } = await supabase
+          .from('notes')
+          .insert([{
+            lead_id: leadData.id,
+            text: duplicateNote,
+            author_id: null,
+            author_name: 'System'
+          }]);
+
+        if (noteError) handleSupabaseError(noteError, 'addLead - insert duplicate note');
+      }
+
+      const newLead = transformLead(leadData, []);
+      return { newLead, assignedAdmin: transformUser(assignedAdmin) };
+    } catch (error) {
+      handleSupabaseError(error, 'addLead');
+      throw error;
+    }
+  },
+
+  // Handle Customer Data
+  getHandleCustomerData: async (): Promise<HandleCustomerData[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('handle_customer_data')
+        .select(`
+          *,
+          leads (*)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) handleSupabaseError(error, 'getHandleCustomerData');
+
+      return (data || []).map(hc => transformHandleCustomerData(hc, hc.leads));
+    } catch (error) {
+      handleSupabaseError(error, 'getHandleCustomerData');
+      return [];
+    }
+  },
+
+  updateHandleCustomer: async (updatedHc: HandleCustomerData): Promise<HandleCustomerData> => {
+    try {
+      const { data, error } = await supabase
+        .from('handle_customer_data')
+        .update({
+          status_fu: updatedHc.status_fu,
+          tanggal_fu_terakhir: updatedHc.tanggal_fu_terakhir || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', updatedHc.id)
+        .select(`
+          *,
+          leads (*)
+        `)
+        .single();
+
+      if (error) handleSupabaseError(error, 'updateHandleCustomer');
+      return transformHandleCustomerData(data, data.leads);
+    } catch (error) {
+      handleSupabaseError(error, 'updateHandleCustomer');
+      throw error;
+    }
+  },
+
+  // Targets
+  getTargets: async (): Promise<Target[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('targets')
+        .select('*')
+        .order('user_id');
+
+      if (error) handleSupabaseError(error, 'getTargets');
+      return data || [];
+    } catch (error) {
+      handleSupabaseError(error, 'getTargets');
+      return [];
+    }
+  },
+
+  updateTarget: async (updatedTarget: Target): Promise<Target> => {
+    try {
+      const { data, error } = await supabase
+        .from('targets')
+        .update({
+          target_harian: updatedTarget.target_harian,
+          target_bulanan: updatedTarget.target_bulanan,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', updatedTarget.user_id)
+        .select()
+        .single();
+
+      if (error) handleSupabaseError(error, 'updateTarget');
+      return data;
+    } catch (error) {
+      handleSupabaseError(error, 'updateTarget');
+      throw error;
+    }
   }
 };
