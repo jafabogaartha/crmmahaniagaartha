@@ -1,0 +1,5 @@
+{
+  "name": "CRM Analitik Penjualan",
+  "description": "Sistem CRM internal dan dashboard monitoring untuk mengelola penjualan produk multi-paket, mendistribusikan lead, dan menganalisis performa penjualan secara real-time.",
+  "requestFramePermissions": []
+}
