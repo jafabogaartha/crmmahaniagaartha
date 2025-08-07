@@ -84,9 +84,14 @@ export const api = {
         .update({ aktif, updated_at: new Date().toISOString() })
         .eq('id', userId)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) handleSupabaseError(error, 'updateUserStatus');
+      
+      if (!data) {
+        throw new Error('User not found or update failed');
+      }
+      
       return transformUser(data);
     } catch (error) {
       handleSupabaseError(error, 'updateUserStatus');
