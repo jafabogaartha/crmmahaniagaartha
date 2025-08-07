@@ -422,11 +422,11 @@ export const api = {
         .not('assigned_to', 'is', null)
         .order('waktu', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       let assignedAdmin = activeAdmins[0]; // Default to first admin
 
-      if (!lastLeadError && lastLead) {
+      if (!lastLeadError && lastLead && lastLead.assigned_to) {
         const lastAssignedAdminIndex = activeAdmins.findIndex(admin => admin.id === lastLead.assigned_to);
         const nextAdminIndex = (lastAssignedAdminIndex + 1) % activeAdmins.length;
         assignedAdmin = activeAdmins[nextAdminIndex];
