@@ -1,7 +1,6 @@
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../services/api';
-import { Lead, LeadStage, FinalStatus, PaymentMethod, Product, Package, Note } from '../types';
+import { Lead, LeadStage, FinalStatus, PaymentMethod, Product, Package, Note, FollowUpStatus, Obstacle, Promo, ShippingStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { Spinner } from '../components/ui/Spinner';
 import { Card } from '../components/ui/Card';
@@ -22,10 +21,33 @@ const WhatsAppIcon = () => (
 const LeadUpdateModal: React.FC<{ lead: Lead | null, onClose: () => void, onSave: (lead: Lead, newNoteText: string) => void }> = ({ lead, onClose, onSave }) => {
     const [editedLead, setEditedLead] = useState<Lead | null>(lead);
     const [newNoteText, setNewNoteText] = useState('');
+    const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+    const [promos, setPromos] = useState<Promo[]>([]);
+    const [packages, setPackages] = useState<Package[]>([]);
 
     useEffect(() => {
         setEditedLead(lead);
         setNewNoteText('');
+        
+        // Fetch obstacles, promos, and packages
+        const fetchData = async () => {
+            try {
+                const [obstaclesData, promosData, packagesData] = await Promise.all([
+                    api.getObstacles(),
+                    api.getPromos(),
+                    api.getPackages()
+                ]);
+                setObstacles(obstaclesData);
+                setPromos(promosData);
+                setPackages(packagesData);
+            } catch (error) {
+                console.error('Failed to fetch modal data:', error);
+            }
+        };
+        
+        if (lead) {
+            fetchData();
+        }
     }, [lead]);
 
     if (!editedLead) return null;
@@ -57,12 +79,55 @@ const LeadUpdateModal: React.FC<{ lead: Lead | null, onClose: () => void, onSave
                             {Object.values(LeadStage).map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </div>
+                    
+                    {editedLead.stage === LeadStage.ON_PROGRESS && (
+                        <>
+                            <div>
+                                <label className="font-bold">Follow Up Status</label>
+                                <select value={editedLead.follow_up_status} onChange={e => handleInputChange('follow_up_status', e.target.value as FollowUpStatus)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50">
+                                    {Object.values(FollowUpStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="font-bold">Next Contact Date & Time</label>
+                                <input type="datetime-local" value={editedLead.next_contact_date || ''} onChange={e => handleInputChange('next_contact_date', e.target.value)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50" />
+                            </div>
+                        </>
+                    )}
+                    
+                    {editedLead.stage === LeadStage.LOSS && (
+                        <div>
+                            <label className="font-bold">Obstacle/Reason</label>
+                            <select value={editedLead.obstacle_id || ''} onChange={e => handleInputChange('obstacle_id', e.target.value)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50">
+                                <option value="">Select Obstacle</option>
+                                {obstacles.map(obstacle => <option key={obstacle.id} value={obstacle.id}>{obstacle.nama_hambatan}</option>)}
+                            </select>
+                        </div>
+                    )}
 
                     {editedLead.stage === LeadStage.CLOSING && (
                          <>
                             <div>
                                 <label className="font-bold">Tanggal Closing</label>
                                 <input type="date" value={editedLead.tanggal_closing || ''} onChange={e => handleInputChange('tanggal_closing', e.target.value)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50" />
+                            </div>
+                            <div>
+                                <label className="font-bold">Package Taken</label>
+                                <select value={editedLead.paket_id || ''} onChange={e => handleInputChange('paket_id', e.target.value)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50">
+                                    <option value="">Select Package</option>
+                                    {packages.filter(p => p.product_id === editedLead.product_id).map(pkg => <option key={pkg.id} value={pkg.id}>{pkg.nama_paket}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="font-bold">Package Price (Rp)</label>
+                                <input type="number" value={editedLead.harga || ''} onChange={e => handleInputChange('harga', Number(e.target.value))} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50" placeholder="Enter manual price" />
+                            </div>
+                            <div>
+                                <label className="font-bold">Promo Applied</label>
+                                <select value={editedLead.promo_id || ''} onChange={e => handleInputChange('promo_id', e.target.value)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50">
+                                    <option value="">No Promo</option>
+                                    {promos.map(promo => <option key={promo.id} value={promo.id}>{promo.nama_promo}</option>)}
+                                </select>
                             </div>
                             <div>
                                 <label className="font-bold">Metode Pembayaran</label>
@@ -83,13 +148,23 @@ const LeadUpdateModal: React.FC<{ lead: Lead | null, onClose: () => void, onSave
                                     {Object.values(FinalStatus).map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                             </div>
+                            {editedLead.metode_bayar === PaymentMethod.FULL_TRANSFER && editedLead.status === FinalStatus.SELESAI && (
+                                <div>
+                                    <label className="font-bold">Shipping Status</label>
+                                    <select value={editedLead.shipping_status} onChange={e => handleInputChange('shipping_status', e.target.value as ShippingStatus)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50">
+                                        {Object.values(ShippingStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                            )}
                          </>
                     )}
                     
-                    <div>
-                        <label className="font-bold">Next Follow-up Reminder</label>
-                         <input type="datetime-local" value={editedLead.next_follow_up || ''} onChange={e => handleInputChange('next_follow_up', e.target.value)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50" />
-                    </div>
+                    {editedLead.stage !== LeadStage.ON_PROGRESS && (
+                        <div>
+                            <label className="font-bold">Next Follow-up Reminder</label>
+                             <input type="datetime-local" value={editedLead.next_follow_up || ''} onChange={e => handleInputChange('next_follow_up', e.target.value)} className="w-full p-2 border-2 rounded mt-1 dark:bg-dark-card border-neutral dark:border-dark-content/50" />
+                        </div>
+                    )}
                     
                     <hr className="my-4 border-gray-300 dark:border-gray-600"/>
 
@@ -235,6 +310,7 @@ export const Leads: React.FC = () => {
             <thead>
               <tr className="border-b-2 border-neutral dark:border-dark-content/30">
                 <th className="p-4">Name</th>
+                <th className="p-4">Date</th>
                 <th className="p-4">Product</th>
                 <th className="p-4">Package</th>
                 <th className="p-4">Source</th>
@@ -248,13 +324,14 @@ export const Leads: React.FC = () => {
                 <tr key={lead.id} className="border-b border-gray-200 dark:border-dark-content/20">
                   <td className="p-4 font-semibold flex items-center">
                       {lead.nama}
-                      {lead.next_follow_up && new Date(lead.next_follow_up) <= new Date() && lead.stage === LeadStage.ON_PROGRESS && (
-                          <ClockIcon className="h-4 w-4 ml-2 text-red-500" title={`Overdue: ${new Date(lead.next_follow_up).toLocaleString()}`} />
+                      {lead.next_contact_date && new Date(lead.next_contact_date) <= new Date() && lead.stage === LeadStage.ON_PROGRESS && (
+                          <ClockIcon className="h-4 w-4 ml-2 text-red-500" title={`Overdue: ${new Date(lead.next_contact_date).toLocaleString()}`} />
                       )}
-                      {lead.next_follow_up && new Date(lead.next_follow_up) > new Date() && lead.stage === LeadStage.ON_PROGRESS && (
-                          <ClockIcon className="h-4 w-4 ml-2 text-blue-500" title={`Upcoming: ${new Date(lead.next_follow_up).toLocaleString()}`} />
+                      {lead.next_contact_date && new Date(lead.next_contact_date) > new Date() && lead.stage === LeadStage.ON_PROGRESS && (
+                          <ClockIcon className="h-4 w-4 ml-2 text-blue-500" title={`Upcoming: ${new Date(lead.next_contact_date).toLocaleString()}`} />
                       )}
                   </td>
+                  <td className="p-4 text-sm">{new Date(lead.waktu).toLocaleDateString()}</td>
                   <td className="p-4">{productMap.get(lead.product_id) || 'N/A'}</td>
                   <td className="p-4">{packageMap.get(lead.paket_id) || 'N/A'}</td>
                   <td className="p-4">{lead.sumber_lead}</td>

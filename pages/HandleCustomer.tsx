@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../services/api';
-import { HandleCustomerData, Product, Package, FollowUpStatus } from '../types';
+import { HandleCustomerData, Product, Package, FollowUpStatus, ShippingStatus } from '../types';
 import { Spinner } from '../components/ui/Spinner';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -86,12 +86,24 @@ export const HandleCustomer: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [data, prods, pkgs] = await Promise.all([
-            api.getHandleCustomerData(),
+        // Get leads that are completed with full transfer and shipping status is "Selesai"
+        const [allLeads, prods, pkgs] = await Promise.all([
+            api.getLeads(),
             api.getProducts(),
             api.getPackages()
         ]);
-        setHcData(data);
+        
+        // Filter leads that should be in handle customer (completed with full transfer and shipping = Selesai)
+        const handleCustomerLeads = allLeads.filter(lead => 
+            lead.shipping_status === ShippingStatus.SELESAI
+        ).map(lead => ({
+            ...lead,
+            lead_id: lead.id,
+            status_fu: FollowUpStatus.BELUM_FOLLOW_UP,
+            tanggal_fu_terakhir: ''
+        })) as HandleCustomerData[];
+        
+        setHcData(handleCustomerLeads);
         setProducts(prods);
         setPackages(pkgs);
       } catch (error) {
@@ -105,8 +117,8 @@ export const HandleCustomer: React.FC = () => {
   
   const handleUpdateItem = async (updatedItem: HandleCustomerData) => {
     try {
-        const savedItem = await api.updateHandleCustomer(updatedItem);
-        setHcData(prev => prev.map(d => d.id === savedItem.id ? savedItem : d));
+        // For now, just update locally since we're filtering from leads
+        setHcData(prev => prev.map(d => d.id === updatedItem.id ? updatedItem : d));
         setSelectedHcItem(null);
     } catch(error) {
         console.error("Failed to update follow up status:", error);
@@ -143,7 +155,7 @@ export const HandleCustomer: React.FC = () => {
                 <td className="p-4">{packageMap.get(item.paket_id) || 'N/A'} ({productMap.get(item.product_id) || 'N/A'})</td>
                 <td className="p-4">{item.tanggal_fu_terakhir || 'N/A'}</td>
                 <td className="p-4">
-                  <span className={`px-2 py-1 text-xs font-bold rounded-full ${item.status_fu === FollowUpStatus.SUDAH ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
+                  <span className={`px-2 py-1 text-xs font-bold rounded-full ${item.status_fu === FollowUpStatus.SUDAH_FOLLOW_UP ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
                     {item.status_fu}
                   </span>
                 </td>

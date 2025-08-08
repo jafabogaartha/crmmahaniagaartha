@@ -1,10 +1,10 @@
 
 import React from 'react';
-import { LeadStage, FinalStatus } from '../../types';
+import { LeadStage, FinalStatus, FollowUpStatus, ShippingStatus } from '../../types';
 
 interface BadgeProps {
   text: string;
-  type?: 'stage' | 'status' | 'default';
+  type?: 'stage' | 'status' | 'followup' | 'shipping' | 'default';
 }
 
 export const Badge: React.FC<BadgeProps> = ({ text, type = 'default' }) => {
@@ -29,6 +29,26 @@ export const Badge: React.FC<BadgeProps> = ({ text, type = 'default' }) => {
                 return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300';
             default:
                  return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        }
+    }
+    if (type === 'followup') {
+        switch (text) {
+            case FollowUpStatus.SUDAH_FOLLOW_UP:
+                return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300';
+            case FollowUpStatus.BELUM_FOLLOW_UP:
+                return 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300';
+            default:
+                return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        }
+    }
+    if (type === 'shipping') {
+        switch (text) {
+            case ShippingStatus.SELESAI:
+                return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300';
+            case ShippingStatus.PENDING:
+                return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300';
+            default:
+                return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
         }
     }
     return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
