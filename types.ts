@@ -22,8 +22,13 @@ export enum FinalStatus {
 }
 
 export enum FollowUpStatus {
-  SUDAH = 'Sudah',
-  BELUM = 'Belum',
+  SUDAH_FOLLOW_UP = 'Sudah Follow Up',
+  BELUM_FOLLOW_UP = 'Belum Follow Up',
+}
+
+export enum ShippingStatus {
+  PENDING = 'Pending',
+  SELESAI = 'Selesai',
 }
 
 export interface User {
@@ -45,7 +50,17 @@ export interface Package {
   id: string;
   product_id: string;
   nama_paket: string;
-  harga_default: number;
+}
+
+export interface Obstacle {
+  id: string;
+  nama_hambatan: string;
+}
+
+export interface Promo {
+  id: string;
+  nama_promo: string;
+  deskripsi: string;
 }
 
 export interface Note {
@@ -74,6 +89,11 @@ export interface Lead {
   notes: Note[];
   next_follow_up?: string;
   inquiry_text?: string;
+  follow_up_status: FollowUpStatus;
+  next_contact_date?: string;
+  obstacle_id?: string;
+  promo_id?: string;
+  shipping_status: ShippingStatus;
 }
 
 export interface HandleCustomerData extends Lead {
@@ -82,10 +102,10 @@ export interface HandleCustomerData extends Lead {
   tanggal_fu_terakhir?: string;
 }
 
-export interface Target {
+export interface RevenueTarget {
   user_id: string;
-  target_harian: number;
-  target_bulanan: number;
+  target_omzet_harian: number;
+  target_omzet_bulanan: number;
 }
 
 export interface AdminPerformance {
@@ -94,8 +114,8 @@ export interface AdminPerformance {
   totalLeads: number;
   totalClosing: number;
   closingRate: number;
-  targetHarian: number;
-  pencapaianHarian: number;
-  targetBulanan: number;
-  pencapaianBulanan: number;
+  targetOmzetHarian: number;
+  pencapaianOmzetHarian: number;
+  targetOmzetBulanan: number;
+  pencapaianOmzetBulanan: number;
 }

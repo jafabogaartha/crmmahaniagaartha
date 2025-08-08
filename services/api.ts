@@ -1,5 +1,5 @@
 import { supabase, handleSupabaseError } from '../lib/supabase';
-import { Role, User, Product, Package, Lead, LeadStage, FinalStatus, FollowUpStatus, HandleCustomerData, Target, PaymentMethod, Note } from '../types';
+import { Role, User, Product, Package, Lead, LeadStage, FinalStatus, FollowUpStatus, HandleCustomerData, RevenueTarget, PaymentMethod, Note, Obstacle, Promo, ShippingStatus } from '../types';
 
 // Helper function to transform database rows to application types
 const transformLead = (leadRow: any, notes: Note[] = []): Lead => ({
@@ -19,6 +19,11 @@ const transformLead = (leadRow: any, notes: Note[] = []): Lead => ({
   status: leadRow.status as FinalStatus,
   next_follow_up: leadRow.next_follow_up || '',
   inquiry_text: leadRow.inquiry_text || '',
+  follow_up_status: leadRow.follow_up_status as FollowUpStatus,
+  next_contact_date: leadRow.next_contact_date || '',
+  obstacle_id: leadRow.obstacle_id || '',
+  promo_id: leadRow.promo_id || '',
+  shipping_status: leadRow.shipping_status as ShippingStatus,
   notes: notes
 });
 
@@ -205,7 +210,6 @@ export const api = {
         .from('packages')
         .update({ 
           nama_paket: updatedPackage.nama_paket,
-          harga_default: updatedPackage.harga_default,
           updated_at: new Date().toISOString()
         })
         .eq('id', updatedPackage.id)
@@ -220,7 +224,7 @@ export const api = {
     }
   },
 
-  addPackage: async (newPackageData: { product_id: string; nama_paket: string; harga_default: number }): Promise<Package> => {
+  addPackage: async (newPackageData: { product_id: string; nama_paket: string }): Promise<Package> => {
     try {
       const { data, error } = await supabase
         .from('packages')
@@ -232,6 +236,70 @@ export const api = {
       return data;
     } catch (error) {
       handleSupabaseError(error, 'addPackage');
+      throw error;
+    }
+  },
+
+  // Obstacles
+  getObstacles: async (): Promise<Obstacle[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('obstacles')
+        .select('*')
+        .order('nama_hambatan');
+
+      if (error) handleSupabaseError(error, 'getObstacles');
+      return data || [];
+    } catch (error) {
+      handleSupabaseError(error, 'getObstacles');
+      return [];
+    }
+  },
+
+  addObstacle: async (newObstacleData: { nama_hambatan: string }): Promise<Obstacle> => {
+    try {
+      const { data, error } = await supabase
+        .from('obstacles')
+        .insert([newObstacleData])
+        .select()
+        .single();
+
+      if (error) handleSupabaseError(error, 'addObstacle');
+      return data;
+    } catch (error) {
+      handleSupabaseError(error, 'addObstacle');
+      throw error;
+    }
+  },
+
+  // Promos
+  getPromos: async (): Promise<Promo[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('promos')
+        .select('*')
+        .order('nama_promo');
+
+      if (error) handleSupabaseError(error, 'getPromos');
+      return data || [];
+    } catch (error) {
+      handleSupabaseError(error, 'getPromos');
+      return [];
+    }
+  },
+
+  addPromo: async (newPromoData: { nama_promo: string; deskripsi: string }): Promise<Promo> => {
+    try {
+      const { data, error } = await supabase
+        .from('promos')
+        .insert([newPromoData])
+        .select()
+        .single();
+
+      if (error) handleSupabaseError(error, 'addPromo');
+      return data;
+    } catch (error) {
+      handleSupabaseError(error, 'addPromo');
       throw error;
     }
   },
@@ -336,6 +404,11 @@ export const api = {
           status: updatedLeadData.status,
           next_follow_up: updatedLeadData.next_follow_up || null,
           inquiry_text: updatedLeadData.inquiry_text || '',
+          follow_up_status: updatedLeadData.follow_up_status,
+          next_contact_date: updatedLeadData.next_contact_date || null,
+          obstacle_id: updatedLeadData.obstacle_id || null,
+          promo_id: updatedLeadData.promo_id || null,
+          shipping_status: updatedLeadData.shipping_status,
           updated_at: new Date().toISOString()
         })
         .eq('id', updatedLeadData.id)
@@ -449,6 +522,8 @@ export const api = {
           assigned_to: assignedAdmin.id,
           stage: LeadStage.ON_PROGRESS,
           status: FinalStatus.BELUM_SELESAI,
+          follow_up_status: FollowUpStatus.BELUM_FOLLOW_UP,
+          shipping_status: ShippingStatus.PENDING,
           harga: 0
         }])
         .select()
@@ -524,40 +599,96 @@ export const api = {
     }
   },
 
-  // Targets
-  getTargets: async (): Promise<Target[]> => {
+  // Revenue Targets
+  getRevenueTargets: async (): Promise<RevenueTarget[]> => {
     try {
       const { data, error } = await supabase
-        .from('targets')
+        .from('revenue_targets')
         .select('*')
         .order('user_id');
 
-      if (error) handleSupabaseError(error, 'getTargets');
+      if (error) handleSupabaseError(error, 'getRevenueTargets');
       return data || [];
     } catch (error) {
-      handleSupabaseError(error, 'getTargets');
+      handleSupabaseError(error, 'getRevenueTargets');
       return [];
     }
   },
 
-  updateTarget: async (updatedTarget: Target): Promise<Target> => {
+  updateRevenueTarget: async (updatedTarget: RevenueTarget): Promise<RevenueTarget> => {
     try {
       const { data, error } = await supabase
-        .from('targets')
+        .from('revenue_targets')
         .update({
-          target_harian: updatedTarget.target_harian,
-          target_bulanan: updatedTarget.target_bulanan,
+          target_omzet_harian: updatedTarget.target_omzet_harian,
+          target_omzet_bulanan: updatedTarget.target_omzet_bulanan,
           updated_at: new Date().toISOString()
         })
         .eq('user_id', updatedTarget.user_id)
         .select()
         .single();
 
-      if (error) handleSupabaseError(error, 'updateTarget');
+      if (error) handleSupabaseError(error, 'updateRevenueTarget');
       return data;
     } catch (error) {
-      handleSupabaseError(error, 'updateTarget');
+      handleSupabaseError(error, 'updateRevenueTarget');
       throw error;
+    }
+  },
+
+  // Export data
+  exportLeads: async (filters?: { startDate?: string; endDate?: string; productId?: string; adminId?: string }): Promise<Lead[]> => {
+    try {
+      let query = supabase
+        .from('leads')
+        .select('*')
+        .order('waktu', { ascending: false });
+
+      if (filters?.startDate) {
+        query = query.gte('waktu', filters.startDate);
+      }
+      if (filters?.endDate) {
+        query = query.lte('waktu', filters.endDate);
+      }
+      if (filters?.productId) {
+        query = query.eq('product_id', filters.productId);
+      }
+      if (filters?.adminId) {
+        query = query.eq('assigned_to', filters.adminId);
+      }
+
+      const { data: leadsData, error: leadsError } = await query;
+      if (leadsError) handleSupabaseError(leadsError, 'exportLeads');
+
+      const leadIds = (leadsData || []).map(lead => lead.id);
+      
+      const { data: notesData, error: notesError } = await supabase
+        .from('notes')
+        .select('*')
+        .in('lead_id', leadIds)
+        .order('created_at');
+
+      if (notesError) handleSupabaseError(notesError, 'exportLeads - notes');
+
+      // Group notes by lead_id
+      const notesByLeadId = (notesData || []).reduce((acc, note) => {
+        if (!acc[note.lead_id]) acc[note.lead_id] = [];
+        acc[note.lead_id].push({
+          id: note.id,
+          text: note.text,
+          authorId: note.author_id || 'system',
+          authorName: note.author_name,
+          timestamp: note.created_at
+        });
+        return acc;
+      }, {} as Record<string, Note[]>);
+
+      return (leadsData || []).map(lead => 
+        transformLead(lead, notesByLeadId[lead.id] || [])
+      );
+    } catch (error) {
+      handleSupabaseError(error, 'exportLeads');
+      return [];
     }
   }
 };

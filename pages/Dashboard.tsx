@@ -3,10 +3,11 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { StatCard } from '../components/dashboard/StatCard';
 import { AnalyticsChart } from '../components/dashboard/AnalyticsChart';
 import { Spinner } from '../components/ui/Spinner';
+import { Button } from '../components/ui/Button';
 import { api } from '../services/api';
 import { Lead, LeadStage, AdminPerformance, Product, User } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { CurrencyDollarIcon, ChartBarIcon, ClipboardDocumentListIcon, UserGroupIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
+import { CurrencyDollarIcon, ChartBarIcon, ClipboardDocumentListIcon, UserGroupIcon, ClockIcon, SparklesIcon, ArrowDownTrayIcon } from '@heroicons/react/24/solid';
 import { Card } from '../components/ui/Card';
 
 const iconClass = 'h-6 w-6 text-white';
@@ -17,6 +18,7 @@ export const Dashboard: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [performance, setPerformance] = useState<AdminPerformance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const [filters, setFilters] = useState({ startDate: '', endDate: '', productId: '', adminId: '' });
   const [admins, setAdmins] = useState<User[]>([]);
@@ -25,11 +27,11 @@ export const Dashboard: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [allLeads, adminUsers, allProducts, targets] = await Promise.all([
+        const [allLeads, adminUsers, allProducts, revenueTargets] = await Promise.all([
           api.getLeads(),
           api.getAdmins(),
           api.getProducts(),
-          api.getTargets(),
+          api.getRevenueTargets(),
         ]);
         setLeads(allLeads);
         setAdmins(adminUsers);
@@ -38,17 +40,19 @@ export const Dashboard: React.FC = () => {
         const performanceData = adminUsers.map(admin => {
             const adminLeads = allLeads.filter(l => l.assigned_to === admin.id);
             const adminClosing = adminLeads.filter(l => l.stage === LeadStage.CLOSING);
-            const adminTarget = targets.find(t => t.user_id === admin.id) || { target_harian: 0, target_bulanan: 0 };
+            const adminRevenueTarget = revenueTargets.find(t => t.user_id === admin.id) || { target_omzet_harian: 0, target_omzet_bulanan: 0 };
+            const adminRevenue = adminClosing.reduce((sum, lead) => sum + (lead.harga || 0), 0);
+            const todayRevenue = adminClosing.filter(l => new Date(l.tanggal_closing || 0).toDateString() === new Date().toDateString()).reduce((sum, lead) => sum + (lead.harga || 0), 0);
             return {
                 adminId: admin.id,
                 adminName: admin.nama_lengkap,
                 totalLeads: adminLeads.length,
                 totalClosing: adminClosing.length,
                 closingRate: adminLeads.length > 0 ? (adminClosing.length / adminLeads.length) * 100 : 0,
-                targetHarian: adminTarget.target_harian,
-                pencapaianHarian: adminClosing.filter(l => new Date(l.tanggal_closing || 0).toDateString() === new Date().toDateString()).length,
-                targetBulanan: adminTarget.target_bulanan,
-                pencapaianBulanan: adminClosing.length,
+                targetOmzetHarian: adminRevenueTarget.target_omzet_harian,
+                pencapaianOmzetHarian: todayRevenue,
+                targetOmzetBulanan: adminRevenueTarget.target_omzet_bulanan,
+                pencapaianOmzetBulanan: adminRevenue,
             }
         });
         setPerformance(performanceData);
@@ -78,6 +82,48 @@ export const Dashboard: React.FC = () => {
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFilters(prev => ({...prev, [e.target.name]: e.target.value}));
   }
+  
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const exportData = await api.exportLeads(filters);
+      
+      // Convert to CSV
+      const headers = ['Timestamp', 'Name', 'WhatsApp', 'Source', 'Product', 'Package', 'Stage', 'Status', 'Price', 'Follow Up Status', 'Next Contact', 'Inquiry'];
+      const csvContent = [
+        headers.join(','),
+        ...exportData.map(lead => [
+          new Date(lead.waktu).toLocaleString(),
+          `"${lead.nama}"`,
+          lead.nomor_wa,
+          `"${lead.sumber_lead}"`,
+          lead.product_id,
+          lead.paket_id || '',
+          lead.stage,
+          lead.status,
+          lead.harga || 0,
+          lead.follow_up_status,
+          lead.next_contact_date ? new Date(lead.next_contact_date).toLocaleString() : '',
+          `"${lead.inquiry_text || ''}"`
+        ].join(','))
+      ].join('\n');
+      
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `leads_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Export failed:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (loading) {
     return <Spinner />;
@@ -137,7 +183,7 @@ export const Dashboard: React.FC = () => {
     <div className="space-y-6">
       {user?.role === 'superadmin' && (
         <Card className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full p-2 border-2 rounded dark:bg-dark-card border-neutral dark:border-dark-content/50" />
                 <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full p-2 border-2 rounded dark:bg-dark-card border-neutral dark:border-dark-content/50" />
                 <select name="productId" value={filters.productId} onChange={handleFilterChange} className="w-full p-2 border-2 rounded dark:bg-dark-card border-neutral dark:border-dark-content/50">
@@ -148,6 +194,10 @@ export const Dashboard: React.FC = () => {
                     <option value="">All Admins</option>
                     {admins.map(a => <option key={a.id} value={a.id}>{a.nama_lengkap}</option>)}
                 </select>
+                <Button onClick={handleExport} disabled={exporting} className="flex items-center justify-center">
+                    <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
+                    {exporting ? 'Exporting...' : 'Export'}
+                </Button>
             </div>
         </Card>
       )}
@@ -190,7 +240,7 @@ export const Dashboard: React.FC = () => {
             <StatCard title="My Leads" value={userPerformance.totalLeads.toString()} icon={<ClipboardDocumentListIcon className={iconClass} />} colorClass="bg-yellow-500"/>
             <StatCard title="My Closings" value={userPerformance.totalClosing.toString()} icon={<UserGroupIcon className={iconClass} />} colorClass="bg-purple-500" />
             <StatCard title="My Closing Rate" value={`${userPerformance.closingRate.toFixed(1)}%`} icon={<ChartBarIcon className={iconClass} />} colorClass="bg-blue-500" />
-            <StatCard title="Target Harian" value={`${userPerformance.pencapaianHarian}/${userPerformance.targetHarian}`} icon={<CurrencyDollarIcon className={iconClass} />} colorClass="bg-green-500" />
+            <StatCard title="Revenue Today" value={`Rp ${userPerformance.pencapaianOmzetHarian.toLocaleString('id-ID')}`} icon={<CurrencyDollarIcon className={iconClass} />} colorClass="bg-green-500" />
           </>
         )}
       </div>
@@ -210,7 +260,7 @@ export const Dashboard: React.FC = () => {
             data={performance}
             type="bar"
             xAxisKey="adminName"
-            dataKeys={[{key: 'totalLeads', color: '#fb923c'}, {key: 'totalClosing', color: '#10b981'}]}
+            dataKeys={[{key: 'totalLeads', color: '#fb923c'}, {key: 'totalClosing', color: '#10b981'}, {key: 'pencapaianOmzetBulanan', color: '#8b5cf6'}]}
         />
         <AnalyticsChart 
             title="Sales by Product" 
