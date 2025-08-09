@@ -6,7 +6,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { api } from '../services/api';
 import type { HandleCustomerData } from '../types';
 
-export default function HandleCustomer() {
+export function HandleCustomer() {
   const [handleCustomerData, setHandleCustomerData] = useState<HandleCustomerData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
